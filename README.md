@@ -43,6 +43,11 @@ Two conclusions that generalise well beyond this repository:
 Full evidence: **[RESULTS.md](RESULTS.md)** · reasoning: **[RESEARCH_LOG.md](RESEARCH_LOG.md)** ·
 go/no-go: **[OPERATIONS.md](OPERATIONS.md)**.
 
+Six extended measurements — including the two that leave the on-chain scope, the CEX
+funding panel and the prediction-market floor — are written up in
+**[case-studies/](case-studies/README.md)** with the same structure every time: question,
+method, numbers, conclusion, and what the result does not prove.
+
 ## Use it
 
 `arbcheck` answers one question: **does this route pay after fees and gas, right now,
@@ -113,6 +118,7 @@ multihop graphs, an audit, a deployment, or any claim that a quote is executable
 | **[RESULTS.md](RESULTS.md)** | Every measurement: the 992-quote backtest, extended runs, live validation, the fork replay |
 | **[RESEARCH_LOG.md](RESEARCH_LOG.md)** | Why the code looks the way it does: P0/P1 phases, market-making analysis, strategy iteration |
 | **[OPERATIONS.md](OPERATIONS.md)** | Live readiness review, the no-go decision, acceptance criteria |
+| **[case-studies/](case-studies/README.md)** | Six measurements in one structure, including the CEX funding panel and the prediction-market floor |
 | **[SECURITY.md](SECURITY.md)** | Scope, reporting channel, safe-testing rules |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | Evidence ground rules, local setup, what gets declined |
 | **[ADD_A_VENUE.md](ADD_A_VENUE.md)** | The adapter contract, the five non-negotiable rules, and the PR checklist |

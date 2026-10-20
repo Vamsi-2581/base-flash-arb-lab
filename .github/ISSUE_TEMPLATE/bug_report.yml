@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in the code or the docs is wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: if the question is "why does my V4 quote revert with no data",
+        check [UNISWAP_V4_QUOTING.md](../blob/main/UNISWAP_V4_QUOTING.md) first.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and what it printed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit or branch
+      description: Output of `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: dropdown
+    id: chain
+    attributes:
+      label: Chain
+      options:
+        - Base (8453)
+        - Monad (143)
+        - not chain-specific
+  - type: textarea
+    id: rpc
+    attributes:
+      label: RPC behaviour
+      description: |
+        If the issue involves a quote, say whether the RPC returned a result, an error, or
+        an empty revert. "It failed" is not reproducible; `execution reverted` with no data
+        is a different problem from a wrong number.

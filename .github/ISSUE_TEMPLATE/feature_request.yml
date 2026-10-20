@@ -1,0 +1,36 @@
+name: Feature or new venue
+description: A venue adapter, a capability, or a change to the tool
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a new venue, read [ADD_A_VENUE.md](../blob/main/ADD_A_VENUE.md) first. The
+        adapter is small; the rules around it are what take the time.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What question can you not answer today
+      description: Describe the measurement, not the feature. "I cannot tell whether X pays after gas" beats "add a Y adapter".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Smallest change that answers it
+  - type: textarea
+    id: falsify
+    attributes:
+      label: What result would prove this was not worth adding
+      description: |
+        Optional, but it is the question this repository cares about most. If the answer is
+        "we would still ship it", say so plainly.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require this project to become a profitable trading bot
+          required: true
+        - label: This does not involve harming other users (sandwiching, front-running retail flow)
+          required: true

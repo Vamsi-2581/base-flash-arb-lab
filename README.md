@@ -264,6 +264,8 @@ Published as research, with no warranty and no claim of profitability.
 
 ## Contact
 
+Community expectations are in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 - WeChat `starky2000`
 - QQ `156297707`
 - Email [chenghanmic@outlook.com](mailto:chenghanmic@outlook.com)

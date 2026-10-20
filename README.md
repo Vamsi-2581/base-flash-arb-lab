@@ -43,11 +43,55 @@ Two conclusions that generalise well beyond this repository:
 Full evidence: **[RESULTS.md](RESULTS.md)** · reasoning: **[RESEARCH_LOG.md](RESEARCH_LOG.md)** ·
 go/no-go: **[OPERATIONS.md](OPERATIONS.md)**.
 
+## Use it
+
+`arbcheck` answers one question: **does this route pay after fees and gas, right now,
+at this block?** It never guesses — every number is a venue's own quoter response.
+
+```bash
+python3 -m arbcheck venues                                # chains and registered venues
+python3 -m arbcheck quote --pair USDC/WETH --size 5000    # exact quotes + best cycle
+python3 -m arbcheck quote --pair MUSD/USDC --size 5000 --chain monad --venues uniswap-v4
+python3 -m arbcheck sweep --pair USDC/WETH --sizes 1000,5000,20000 --blocks 3
+```
+
+Real output, Base, one block:
+
+```text
+USDC/WETH on Base @ block latest | 5000 in
+  venue           pool                               out   vs best
+  pancake-v3      pancake-v3 0.01%            2.05460363      0.0bp
+  uniswap-v3      uniswap-v3 0.05%            2.05370374     -4.4bp
+  uniswap-v3      uniswap-v3 0.01%            2.05306709     -7.5bp
+  pancake-v3      pancake-v3 0.05%            2.05254958    -10.0bp
+  uniswap-v3      uniswap-v3 0.3%             2.04653654    -39.3bp
+  uniswap-v4      uniswap-v4 0.3%             2.03824824    -79.6bp
+  uniswap-v3      uniswap-v3 1%               2.01859941   -175.2bp
+  excluded 3 quote(s) more than 5% from the median (depth artifact)
+
+best cycle: pancake-v3 0.01% -> pancake-v3 0.05%
+  gross   $-7.4940  (-15.0 bp)
+  gas     $0.0071 (450000 gas)
+  net     $-7.5011  (-15.0 bp)
+  verdict not profitable
+```
+
+Three things the design guarantees:
+
+- pools are discovered per venue, and a pool with no in-range liquidity is dropped
+  rather than quoted at a nonsense price;
+- quotes more than 5% from the median are reported as excluded, because that is a
+  depth artifact, not an opportunity;
+- if gas cannot be priced, the tool says so and refuses to print a net figure.
+
 ## What it implements
 
-- **Base only** — discovers USDC/WETH pools on Uniswap V3 and PancakeSwap V3 via their
-  factories, fee tiers and `QuoterV2`, and produces pinned-block integer quotes across a
-  configurable loan-size grid.
+- **One adapter per venue**, in `venues/`: Uniswap V3, PancakeSwap V3 and Uniswap V4 on
+  Base, with Uniswap V3 and V4 also wired for Monad. Adding a venue is one module and one
+  registration — see [ADD_A_VENUE.md](ADD_A_VENUE.md).
+- **`arbcheck`**, a CLI that turns those adapters into a verifier: exact quotes per pool,
+  the best cross-venue cycle, and a verdict, refusing to invent a net figure when gas
+  cannot be priced.
 - Resolves the Aave V3 Pool from its `PoolAddressesProvider` and reads the live
   `FLASHLOAN_PREMIUM_TOTAL()`. Conservative gas model, slippage stress and an L1 data-fee
   cushion. Fails closed on chain mismatch, unpriced gas or too few pools.
@@ -71,6 +115,7 @@ multihop graphs, an audit, a deployment, or any claim that a quote is executable
 | **[OPERATIONS.md](OPERATIONS.md)** | Live readiness review, the no-go decision, acceptance criteria |
 | **[SECURITY.md](SECURITY.md)** | Scope, reporting channel, safe-testing rules |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | Evidence ground rules, local setup, what gets declined |
+| **[ADD_A_VENUE.md](ADD_A_VENUE.md)** | The adapter contract, the five non-negotiable rules, and the PR checklist |
 
 ## Quick start
 
@@ -156,7 +201,9 @@ preflight. Full checklist and the live-send path: [OPERATIONS.md](OPERATIONS.md)
 
 | Path | Purpose |
 |---|---|
-| `bot/searcher.py` | Fixed-block pool discovery and V3 quote comparison |
+| `arbcheck/` | CLI: `venues`, `quote`, `sweep`, `replay` |
+| `venues/` | Venue adapters (Uniswap V3, PancakeSwap V3, Uniswap V4) and the chain registry |
+| `bot/searcher.py` | Legacy fixed-block pool discovery and V3 quote comparison |
 | `bot/networks.py` | Base Aave/DEX/token address registry |
 | `bot/preflight.py` | Point-in-time `eth_call` / `eth_estimateGas` against real contracts |
 | `bot/live.py`, `bot/policy.py` | One-time live send with budget reservations |

@@ -1,0 +1,89 @@
+name: Base mainnet read-only RPC and fork validation
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/live-validation.yml'
+      - 'scripts/validate_base_readonly.py'
+      - 'script/ForkConnectivity.s.sol'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Offline unit tests and Solidity compilation
+        run: |
+          python -m unittest discover -s tests -v
+          forge build
+      - name: Public Base RPC pinned-block reads and bounded quote search
+        shell: bash
+        run: |
+          mkdir -p validation
+          python -m scripts.validate_base_readonly --out validation --timeout 9 --full-scan || echo 'No successful public RPC endpoint'
+      - name: No-broadcast historical Base fork smoke
+        shell: bash
+        run: |
+          if [[ -z "$PROBE_BLOCK" ]]; then
+            echo "SKIPPED: Base RPC probe unavailable" | tee validation/fork-smoke.log
+            echo SKIPPED > validation/fork-status.txt
+          else
+            set -o pipefail
+            if timeout 180s forge script script/ForkConnectivity.s.sol:ForkConnectivity -vvv 2>&1 | tee validation/fork-smoke.log; then
+              echo PASS > validation/fork-status.txt
+            else
+              echo UNAVAILABLE_OR_FAILED > validation/fork-status.txt
+            fi
+          fi
+      - name: Historical arbitrage replay when a verified candidate exists
+        shell: bash
+        run: |
+          if [[ ! -s validation/candidates.jsonl ]]; then
+            echo 'SKIPPED: no non-stale positive candidate, not a proof of unprofitability' | tee validation/replay.log
+          else
+            set -o pipefail
+            timeout 150s python -m bot.replay --input validation/candidates.jsonl --output validation/replay-results.jsonl --limit 1 --timeout 120 2>&1 | tee validation/replay.log || echo 'REPLAY_UNAVAILABLE' | tee -a validation/replay.log
+          fi
+      - name: Report evidence and limitations
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("validation"); p.mkdir(exist_ok=True)
+          f = p/"report.json"
+          data = json.loads(f.read_text()) if f.exists() else {}
+          fork = (p/"fork-status.txt").read_text().strip() if (p/"fork-status.txt").exists() else "NOT_RUN"
+          replay = (p/"replay.log").read_text() if (p/"replay.log").exists() else ""
+          data["fork_status"] = fork
+          data["replay_status"] = "SKIPPED_NO_POSITIVE_CANDIDATE" if "SKIPPED:" in replay else ("ATTEMPTED" if replay else "NOT_RUN")
+          f.write_text(json.dumps(data, indent=2))
+          quote_n = len(data.get("probe",{}).get("venue_quotes",[]))
+          rows = ["## Base read-only integration evidence", "",
+                  "- RPC: " + data.get("probe",{}).get("status","UNAVAILABLE"),
+                  "- Same-block V3 quotes: " + str(quote_n),
+                  "- Source block: " + str(data.get("probe",{}).get("block","n/a")),
+                  "- Full quote scan: " + data.get("scan_status","NOT_RUN"),
+                  "- Historical fork: " + fork,
+                  "- Arbitrage fork replay: " + data["replay_status"],
+                  "",
+                  "**No key, contract deployment, or real transaction was used.**",
+                  "A successful fork connectivity test is NOT an executable profit opportunity."]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out: out.write("\n".join(rows)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: base-read-only-evidence
+          path: validation/
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,120 @@
+name: Historical Base V3 backtest and proof (read-only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/historical-backtest.yml'
+      - 'foundry.toml'
+      - 'bot/historical.py'
+      - 'bot/replay.py'
+      - 'bot/searcher.py'
+      - 'script/ForkProof.s.sol'
+      - 'scripts/volume_blocks.py'
+permissions:
+  contents: read
+concurrency:
+  group: base-readonly-history
+  cancel-in-progress: false
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Baseline safety tests
+        run: |
+          python -m unittest discover -s tests -v
+          forge build && forge test
+      - name: Identify event-driven blocks after large historical V3 swaps
+        shell: bash
+        run: |
+          mkdir -p validation/history
+          timeout 75s python -m scripts.volume_blocks --out validation/history --span 16000 --segments 8 --width 60 --top-n 4 --min-swap 1000             | tee validation/history/event-console.log || echo 'EVENT_SELECTION_UNAVAILABLE' | tee -a validation/history/event-console.log
+      - name: Backtest actual historical block states
+        shell: bash
+        run: |
+          mkdir -p validation/history
+          timeout 270s python -m bot.historical \
+            --out validation/history \
+            --event-blocks validation/history/event-selection.json \
+            --lookbacks 16,48,128,512,2048,8192,32768 \
+            --amounts-usdc 200,1000,5000,20000 \
+            --max-seconds 210 \
+            --timeout 8 \
+            --min-profit-usdc 1 \
+            | tee validation/history/console.log || echo 'HISTORICAL_SCAN_INCOMPLETE' | tee -a validation/history/console.log
+      - name: Full flash-loan Fork replay of profitable quote candidates
+        shell: bash
+        run: |
+          if [[ ! -s validation/history/history-candidates.jsonl ]]; then
+            echo 'SKIPPED: zero qualifying pinned-block candidates; no EVM execution proof' | tee validation/history/replay-console.log
+          else
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path=Path("validation/history/history-candidates.jsonl")
+          rows=[json.loads(x) for x in path.read_text().splitlines() if x.strip()]
+          rows.sort(key=lambda x:int(x.get("estimated_net_usdc",0)),reverse=True)
+          chosen=rows[0].get("historic_endpoint","base_official")
+          urls={"base_official":"https://mainnet.base.org",
+                "publicnode":"https://base-rpc.publicnode.com",
+                "drpc":"https://base.drpc.org"}
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("REPLAY_RPC="+urls[chosen]+"\n")
+          PY
+            timeout 210s python -m bot.replay \
+              --input validation/history/history-candidates.jsonl \
+              --output validation/history/fork-results.jsonl \
+              --rpc "$REPLAY_RPC" \
+              --limit 3 --timeout 55 \
+              | tee validation/history/replay-console.log || echo 'REPLAY_INCOMPLETE' | tee -a validation/history/replay-console.log
+          fi
+      - name: Classify full execution proof separately from backtested price quotes
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,json
+          from pathlib import Path
+          p=Path("validation/history")
+          report=json.loads((p/"history-report.json").read_text()) if (p/"history-report.json").exists() else {}
+          proofs=[json.loads(x) for x in (p/"fork-results.jsonl").read_text().splitlines() if x.strip()] if (p/"fork-results.jsonl").exists() else []
+          wins=[r for r in proofs if r.get("status")=="FORK_EXECUTION_SUCCESS" and r.get("net_after_gas_status")=="MODELED_POSITIVE"]
+          backtested=report.get("snapshot_blocks_quoted",0)
+          data={"status":"EXECUTION_FORK_MODELED_NET_POSITIVE" if wins else "NO_VERIFIED_PROFITABLE_FORK",
+                "snapshots_quoted":backtested,"quote_paths_checked":report.get("pairs_quoted",0),
+                "modeled_quote_candidates":report.get("modeled_positive_candidates",0),
+                "executions_replayed":len(proofs),
+                "fork_execution_success":sum(r.get("status")=="FORK_EXECUTION_SUCCESS" for r in proofs),
+                "fork_modeled_after_gas_positive":len(wins),
+                "best_quoted_net_usdc_units":report.get("max_net_after_modeled_gas_usdc_units"),
+                "winner_proofs":wins,
+                "no_actual_transactions":True,
+                "warning":"A fork executed loan+swaps+repayment, but real inclusion/MEV and exact L1 fee not proven."}
+          p.mkdir(parents=True,exist_ok=True)
+          (p/"verification-summary.json").write_text(json.dumps(data,indent=2))
+          lines=["## Historical quote and fork evidence", "",
+                 "- Historical snapshots quoted: "+str(backtested),
+                 "- Quote combinations with valid data: "+str(data["quote_paths_checked"]),
+                 "- Positive quote candidates: "+str(data["modeled_quote_candidates"]),
+                 "- EVM full flash-loan fork attempts: "+str(data["executions_replayed"]),
+                 "- Full fork executions with conservatively modeled positive net: "+str(len(wins)),
+                 "- Best modeled quote net (USDC 6 decimals): "+str(data["best_quoted_net_usdc_units"]),
+                 "", "**NO funds, signing or transaction broadcast.**",
+                 "**Quote profit ≠ executed profit; fork success ≠ guaranteed live inclusion.**"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f: f.write("\n".join(lines)+"\n")
+          print(json.dumps(data,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: base-historical-backtest-evidence
+          path: validation/history/
+          if-no-files-found: warn
+          retention-days: 30

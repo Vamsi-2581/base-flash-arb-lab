@@ -1,0 +1,20 @@
+{
+  "status": "REPRODUCIBLE_HISTORICAL_FORK_SEED_NOT_LIVE_OPPORTUNITY",
+  "source_tx_hash": "0x26eaac4bbffbfd0f3e20717289f2f288ce5cb4d1636444238bcb56c89f4148d4",
+  "source_transaction_index": 2,
+  "block": 15066218,
+  "fork_pre_transaction_approx_block": 15066217,
+  "borrower": "0x147733ca6eadcd14021101ca4be1467a7e0feecc",
+  "amount_usdc": 1468185640,
+  "actual_historical_weth_liquidated_units": "406023782553469264",
+  "sell_dex": 0,
+  "sell_fee": 100,
+  "min_usdc": 1,
+  "min_profit_usdc": 1,
+  "preflight_hf_wad": "999992849630940100",
+  "preflight_counterfactual_spread_before_gas_usdc_units": 65133400,
+  "preflight_endpoint": "base_official",
+  "state_exactness": "B_MINUS_1_NOT_TRANSACTION_INDEX",
+  "no_live_broadcast": true,
+  "test_command": "RUN_HISTORICAL_FORK=true LQ_CANDIDATE_PATH=fixtures/liquidation-15066218.json BASE_RPC_URL=https://mainnet.base.org forge test --match-contract LiquidationForkProofTest --match-test testHistoricalRealProtocolLiquidation -vvvv"
+}

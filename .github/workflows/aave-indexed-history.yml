@@ -1,0 +1,54 @@
+name: Aave Base indexed liquidation-history probe (read-only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/aave-indexed-history.yml'
+      - 'research/aave_indexed_history.py'
+      - 'tests/test_aave_indexed_history.py'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test indexer result interpretation offline
+        run: python -m unittest discover -s tests -p 'test_aave_indexed_history.py' -v
+      - name: Probe public Blockscout Aave indexed LiquidationCall history
+        shell: bash
+        run: |
+          mkdir -p validation/p0/indexed
+          timeout 30s python -m research.aave_indexed_history --out validation/p0/indexed --limit 40 \
+            | tee validation/p0/indexed/stdout.log \
+            || echo 'INDEXER_BLOCKED_OR_UNAVAILABLE' | tee -a validation/p0/indexed/stdout.log
+      - name: Report economic evidence
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path("validation/p0/indexed/indexed-history.json")
+          x=json.loads(p.read_text()) if p.exists() else {}
+          lines=["## Historical Aave Base indexer probe","",
+                 "- Endpoint: Base Blockscout legacy logs API",
+                 "- Status: "+str(x.get("status","NO_RESULT")),
+                 "- Verified canonical LiquidationCall event records: "+str(x.get("events_found",0)),
+                 "- Broad history coverage established: **NO**",
+                 "- Execution/fork-verified positive profit: **0**",
+                 "",
+                 "Paid or blocked indexer access is **not** evidence of zero liquidations."]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:f.write("\n".join(lines)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aave-indexer-diagnostic
+          path: validation/p0/indexed
+          retention-days: 14
+          if-no-files-found: warn

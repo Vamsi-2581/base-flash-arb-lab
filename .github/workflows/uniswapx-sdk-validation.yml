@@ -1,0 +1,85 @@
+name: P1 UniswapX SDK signature research (read-only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/uniswapx-sdk-validation.yml'
+      - 'research/uniswapx_validator/**'
+      - 'research/uniswapx_filled_quote_screen.py'
+      - 'tests/test_uniswapx_filled_quote.py'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned official UniswapX SDK without lifecycle scripts
+        working-directory: research/uniswapx_validator
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Test SDK import, Base reactor, fail-closed validation
+        working-directory: research/uniswapx_validator
+        run: npm test
+      - name: Observe Base open and filled Dutch V3 orders (no signatures saved)
+        working-directory: research/uniswapx_validator
+        shell: bash
+        run: |
+          mkdir -p ../../validation/p0/uniswapx-sdk
+          OUT_DIR=../../validation/p0/uniswapx-sdk \
+            timeout 55s node validate.mjs \
+            | tee ../../validation/p0/uniswapx-sdk/console.log \
+            || echo "SDK_API_PARTIAL_OR_UNAVAILABLE" | tee -a ../../validation/p0/uniswapx-sdk/console.log
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test replay classification without live RPC
+        run: python -m unittest discover -s tests -p test_uniswapx_filled_quote.py -v
+      - name: Quote selected validated historical fills at end of their Base blocks
+        shell: bash
+        run: |
+          if [[ -s validation/p0/uniswapx-sdk/sdk-validation.json ]]; then
+            mkdir -p validation/p0/filled-quotes
+            timeout 150s python -m research.uniswapx_filled_quote_screen \
+              --input validation/p0/uniswapx-sdk/sdk-validation.json \
+              --out validation/p0/filled-quotes --limit 5 \
+              | tee validation/p0/filled-quotes/console.log \
+              || echo "HISTORICAL_QUOTE_PARTIAL_OR_UNAVAILABLE" | tee -a validation/p0/filled-quotes/console.log
+          fi
+      - name: Display coverage and signature validation scope
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          path=Path("validation/p0/uniswapx-sdk/sdk-validation.json")
+          reports=json.loads(path.read_text()).get("reports",[]) if path.exists() else []
+          priced=Path("validation/p0/filled-quotes/filled-order-quote-results.json")
+          priced_data=json.loads(priced.read_text()) if priced.exists() else {}
+          lines=["## UniswapX Dutch V3 Base SDK screen", ""]
+          for report in reports:
+              lines.append(f"- {report.get('requested_order_status')}: {report.get('status')} "
+                           f"({report.get('fetched','unknown')} records)")
+              lines.append(f"  - EOA maker validated: {report.get('sdk_validated_eoa_maker',0)}")
+              lines.append(f"  - EOA cosigner validated: {report.get('sdk_validated_eoa_cosigner',0)}")
+          lines += ["", f"- Eligible historical single-output orders involving USDC or WETH: {priced_data.get('eligible_signed_single_output_base_asset_filled_orders',0)}",
+             f"- End-of-block V3 quotes completed: {priced_data.get('post_fill_block_quotes_complete',0)}",
+             f"- Gross quote-only positive edges: {priced_data.get('hypothetical_positive_gross_surplus_quotes',0)}",
+             f"- Positive after 15bps quote stress (before Gas): {priced_data.get('positive_after_15bps_quote_stress_before_gas',0)}",
+             f"- Native ETH WETH pricing proxies: {priced_data.get('native_eth_weth_proxy_screened',0)}",
+             "", "**Neither maker signatures nor historical filled orders prove current on-chain fillability, positive PnL or profitable loan funding. No keys/transactions.**"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f: f.write("\n".join(lines)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uniswapx-sdk-redacted-validation-evidence
+          path: |
+            validation/p0/uniswapx-sdk/
+            validation/p0/filled-quotes/
+          retention-days: 14
+          if-no-files-found: warn

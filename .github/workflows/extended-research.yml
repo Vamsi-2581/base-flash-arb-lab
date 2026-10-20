@@ -1,0 +1,122 @@
+name: Extended Base multi-asset event research (no wallets)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/extended-research.yml'
+      - 'bot/extended_research.py'
+      - 'scripts/extended_event_backtest.py'
+      - 'scripts/volume_blocks.py'
+      - 'tests/test_extended_research.py'
+permissions:
+  contents: read
+concurrency:
+  group: extended-base-research
+  cancel-in-progress: false
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Strict offline unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Select historical large-swap events
+        shell: bash
+        run: |
+          mkdir -p validation/extended
+          timeout 75s python -m scripts.volume_blocks \
+            --out validation/extended --span 18000 --segments 8 --width 48 \
+            --top-n 3 --min-swap 1000 \
+            | tee validation/extended/event-selection-console.log \
+            || echo 'EVENT_SELECTION_UNAVAILABLE' | tee -a validation/extended/event-selection-console.log
+      - name: Historical pre/post event multi-asset and multi-DEX quotes
+        shell: bash
+        run: |
+          timeout 270s python -m scripts.extended_event_backtest \
+            --events validation/extended/event-selection.json \
+            --out validation/extended \
+            --assets WETH,cbBTC,DAI,EURC \
+            --amounts 200,1000,5000,20000 \
+            --max-events 2 \
+            --max-routes 14 \
+            --refine-top 3 \
+            --max-seconds 205 \
+            | tee validation/extended/console.log \
+            || echo 'EXTENDED_RESEARCH_UNAVAILABLE' | tee -a validation/extended/console.log
+      - name: Attempt full historical Aave and V3 fork proof on eligible positive quotes only
+        shell: bash
+        run: |
+          if [[ ! -s validation/extended/fork-candidates.jsonl ]]; then
+            echo 'SKIPPED_NO_EXECUTION_COMPATIBLE_POSITIVE_CANDIDATES' | tee validation/extended/fork-console.log
+          else
+            python - <<'PY'
+          import json,os
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path("validation/extended/fork-candidates.jsonl").read_text().splitlines() if x.strip()]
+          lookup={"base_official":"https://mainnet.base.org",
+                  "publicnode":"https://base-rpc.publicnode.com",
+                  "drpc":"https://base.drpc.org"}
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("REPLAY_RPC="+lookup.get(rows[0].get("historic_endpoint"),"https://mainnet.base.org")+"\n")
+          PY
+            timeout 155s python -m bot.replay \
+              --input validation/extended/fork-candidates.jsonl \
+              --output validation/extended/fork-results.jsonl \
+              --rpc "$REPLAY_RPC" --limit 2 --timeout 65 \
+              | tee validation/extended/fork-console.log \
+              || echo 'FORK_REPLAY_INCOMPLETE' | tee -a validation/extended/fork-console.log
+          fi
+      - name: Categorize quote-only results, preserve missing coverage
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, json
+          from pathlib import Path
+          root=Path("validation/extended")
+          report=json.loads((root/"event-backtest.json").read_text()) if (root/"event-backtest.json").exists() else {}
+          snapshots=report.get("observations",[])
+          positives=[row for s in snapshots for row in s.get("positive_research_quotes",[])]
+          compatible=[r for r in positives if r.get("can_use_existing_executor")]
+          proofs=[json.loads(line) for line in (root/"fork-results.jsonl").read_text().splitlines() if line.strip()] if (root/"fork-results.jsonl").exists() else []
+          winners=[r for r in proofs if r.get("status")=="FORK_EXECUTION_SUCCESS" and r.get("net_after_gas_status")=="MODELED_POSITIVE"]
+          summary={
+            "status": report.get("status","NO_BACKTEST_REPORT"),
+            "before_after_snapshots_quoted":report.get("snapshots_quoted",0),
+            "full_two_leg_quotes":report.get("full_two_leg_quotes",0),
+            "positive_research_quotes":len(positives),
+            "compatible_quote_paths":len(compatible),
+            "full_fork_attempts":len(proofs),
+            "successful_full_flashloan_fork_proofs":len(winners),
+            "fork_proof_winners":winners,
+            "event_block_pairs":report.get("comparisons",[]),
+            "no_keys_no_gas":True,
+            "warning":"Observes only end-of-block state: cannot reconstruct intra-block transaction ordering. Research quotes are not executable PnL."
+          }
+          root.mkdir(exist_ok=True)
+          (root/"research-summary.json").write_text(json.dumps(summary,indent=2))
+          lines=["## Extended Base read-only research", "",
+            f"- Event-conditioned block snapshots: {summary['before_after_snapshots_quoted']}",
+            f"- Complete two-leg quotes: {summary['full_two_leg_quotes']}",
+            f"- Positive research quote rows: {len(positives)}",
+            f"- Candidate routes compatible with legacy executor (still not Fork-verified): {len(compatible)}",
+            f"- Full Aave/DEX fork attempts: {len(proofs)}",
+            f"- Verified positive conservative net on full fork: {len(winners)}",
+            "", "All extended DEX and new token paths must remain simulation-only until their execution adapters have passed a real Aave repayment fork test."]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f: f.write("\n".join(lines)+"\n")
+          print(json.dumps({k:v for k,v in summary.items() if k!="event_block_pairs"},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: extended-base-research-evidence
+          path: validation/extended/
+          retention-days: 30
+          if-no-files-found: warn

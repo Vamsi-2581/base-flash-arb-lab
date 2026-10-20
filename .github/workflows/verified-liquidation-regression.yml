@@ -1,0 +1,96 @@
+name: Regression - proven Aave Base flash-liquidation fork (simulation only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/verified-liquidation-regression.yml'
+      - 'fixtures/liquidation-15066218.json'
+      - 'src/FlashLiquidator.sol'
+      - 'script/LiquidationForkProof.s.sol'
+      - 'test/LiquidationForkProof.t.sol'
+permissions:
+  contents: read
+jobs:
+  repeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Compile and test offchain execution authorization/repayment
+        run: |
+          forge build
+          forge test --match-contract FlashLiquidatorTest -vv
+      - name: Execute same frozen real Base historical liquidation on two RPC endpoints
+        shell: bash
+        run: |
+          mkdir -p validation/liquidation-fork
+          for rpc in "https://mainnet.base.org" "https://base.drpc.org"; do
+            if [[ "$rpc" == "https://mainnet.base.org" ]]; then label="base-official"; else label="drpc"; fi
+            rm -f validation/liquidation-fork/fork-profit-proof.json
+            RUN_HISTORICAL_FORK=true \
+              BASE_RPC_URL="$rpc" \
+              LQ_CANDIDATE_PATH=fixtures/liquidation-15066218.json \
+              timeout 110s forge test --match-contract LiquidationForkProofTest \
+                --match-test testHistoricalRealProtocolLiquidation -vvv \
+                > "validation/liquidation-fork/$label-forge.log" 2>&1 || true
+            if test -s validation/liquidation-fork/fork-profit-proof.json; then
+              cp validation/liquidation-fork/fork-profit-proof.json \
+                 "validation/liquidation-fork/$label-profit-proof.json"
+              echo "$label: HISTORICAL_AAVE_FORK_RETURNED_WITH_PROFIT_FILE"
+            else
+              echo "$label: REPLAY_UNAVAILABLE_OR_NOT_PROFITABLE"
+              grep -Ei 'Error:|Revert|failure|failed to|rate limit' \
+                  "validation/liquidation-fork/$label-forge.log" | tail -n 8 || true
+            fi
+          done
+      - name: Validate deterministic accounting and provenance before accepting proof
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path("validation/liquidation-fork")
+          root.mkdir(exist_ok=True,parents=True)
+          target=json.loads(Path("fixtures/liquidation-15066218.json").read_text())
+          proof_files=list(root.glob("*-profit-proof.json"))
+          verified=[]
+          for path in proof_files:
+            try:
+              result=json.loads(path.read_text())
+              ok=(result.get("status")=="FORK_ESTIMATED_AFTER_GAS_POSITIVE"
+                  and result.get("real_aave_loan_liquidation_swap_and_repayment") is True
+                  and result.get("state_exactness")=="B_MINUS_1_NOT_TRANSACTION_INDEX"
+                  and result.get("block")==target["block"]
+                  and result.get("borrowed_usdc_units")==target["amount_usdc"]
+                  and result.get("usdc_profit_units")-result.get("modeled_gas_usdc_units")==result.get("net_after_gas_usdc_units")
+                  and result.get("net_after_gas_usdc_units")>0 and result.get("broadcast") is False)
+              if ok: verified.append({"rpc":path.name,"profit":result["usdc_profit_units"],
+                                      "gas_model":result["modeled_gas_usdc_units"],
+                                      "net":result["net_after_gas_usdc_units"]})
+            except (ValueError,TypeError,KeyError):
+              pass
+          summary={"status":"REPRODUCED_FULL_FORK_WITH_POSITIVE_CONSERVATIVE_NET" if verified else "NOT_REPRODUCED",
+             "unique_rpc_replays_verified":len(verified),"forks":verified,
+             "sample_tx_hash":target["source_tx_hash"],
+             "source_block":target["block"],
+             "prestate_block":target["fork_pre_transaction_approx_block"],
+             "historical_only":True,
+             "broadcast":False,
+             "warning":"Historical B-1 state, NOT precise intra-block preceding transaction. Gas is modeled conservatively; no live inclusion probability or net realized return."}
+          (root/"regression-summary.json").write_text(json.dumps(summary,indent=2))
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+             f.write("## Frozen Aave Base historical liquidation regression\n\n")
+             for k,v in summary.items():f.write(f"- **{k}**: {v}\n")
+          print(json.dumps(summary,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-aave-positive-fork-regression
+          path: validation/liquidation-fork/
+          retention-days: 30
+          if-no-files-found: warn

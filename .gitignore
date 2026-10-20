@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+out/
+cache/
+broadcast/
+lib/
+*.jsonl
+budget_state.json
+private-keys*
+secret*
+.DS_Store

@@ -94,6 +94,8 @@ Three things the design guarantees:
 - **One adapter per venue**, in `venues/`: Uniswap V3, PancakeSwap V3 and Uniswap V4 on
   Base, with Uniswap V3 and V4 also wired for Monad. Adding a venue is one module and one
   registration — see [ADD_A_VENUE.md](ADD_A_VENUE.md).
+If you are here because a V4 quote reverts with no data, start with
+[UNISWAP_V4_QUOTING.md](UNISWAP_V4_QUOTING.md).
 - **`arbcheck`**, a CLI that turns those adapters into a verifier: exact quotes per pool,
   the best cross-venue cycle, and a verdict, refusing to invent a net figure when gas
   cannot be priced.
@@ -148,6 +150,7 @@ The ten research jobs that used to re-run the same unit tests on a schedule are 
 | **[SECURITY.md](SECURITY.md)** | Scope, reporting channel, safe-testing rules |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | Evidence ground rules, local setup, what gets declined |
 | **[ADD_A_VENUE.md](ADD_A_VENUE.md)** | The adapter contract, the five non-negotiable rules, and the PR checklist |
+| **[UNISWAP_V4_QUOTING.md](UNISWAP_V4_QUOTING.md)** | Quoting V4 off-chain: pool ids, the three deployed ABIs, the struct-offset trap, and how to diagnose an empty revert |
 
 ## Quick start
 

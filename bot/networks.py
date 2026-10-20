@@ -1,17 +1,35 @@
 """Verified Base addresses; always re-check against official deployments on live use."""
+"""Base addresses for the legacy research pipeline.
+
+Venue addresses are **not** duplicated here: they come from the `venues/` adapters,
+which are the single source of truth. This module only adds the numeric ids and the
+routers that the deployment and execution paths still need.
+
+The supported entry point for new work is `arbcheck`; this pipeline is kept because
+the fork replay, preflight and live-send paths depend on it.
+"""
 from dataclasses import dataclass
+
+from venues.pancake_v3 import pancake_v3
+from venues.uniswap_v3 import uniswap_v3
 
 BASE_CHAIN_ID = 8453
 USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 WETH = "0x4200000000000000000000000000000000000006"
 AAVE_PROVIDER = "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D"
-# Fetched dynamically through AAVE_PROVIDER.getPool() for upgrade safety.
-UNI_V3_FACTORY = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"
-UNI_QUOTER_V2 = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
+
+_UNISWAP = uniswap_v3.deployments["base"]
+_PANCAKE = pancake_v3.deployments["base"]
+
+# Routers are only used by the execution path; quoting never needs them.
 UNI_SWAP_ROUTER_02 = "0x2626664c2603336E57B271c5C0b26F421741e481"
-PANCAKE_V3_FACTORY = "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865"
-PANCAKE_QUOTER_V2 = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"
 PANCAKE_V3_SWAP_ROUTER = "0x1b81D678ffb9C0263b24A97847620C99d213eB14"
+
+# Backwards-compatible aliases: existing callers import these names directly.
+UNI_V3_FACTORY = _UNISWAP.factory
+UNI_QUOTER_V2 = _UNISWAP.quoter
+PANCAKE_V3_FACTORY = _PANCAKE.factory
+PANCAKE_QUOTER_V2 = _PANCAKE.quoter
 
 
 @dataclass(frozen=True)
@@ -25,8 +43,8 @@ class Exchange:
 
 
 EXCHANGES = (
-    Exchange("UniswapV3", 0, UNI_V3_FACTORY, UNI_QUOTER_V2,
-             UNI_SWAP_ROUTER_02, (100, 500, 3000, 10000)),
-    Exchange("PancakeV3", 1, PANCAKE_V3_FACTORY, PANCAKE_QUOTER_V2,
-             PANCAKE_V3_SWAP_ROUTER, (100, 500, 2500, 10000)),
+    Exchange("UniswapV3", 0, _UNISWAP.factory, _UNISWAP.quoter,
+             UNI_SWAP_ROUTER_02, _UNISWAP.fees),
+    Exchange("PancakeV3", 1, _PANCAKE.factory, _PANCAKE.quoter,
+             PANCAKE_V3_SWAP_ROUTER, _PANCAKE.fees),
 )

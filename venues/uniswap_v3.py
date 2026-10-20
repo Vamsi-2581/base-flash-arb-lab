@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from venues import PoolRef, VenueError, QUOTE_V3_SELECTOR, register, sort_pair
+from venues import PoolRef, VenueError, encode_v3_quote, register, sort_pair
 from bot.abi import encode, result_address, result_uint, word
 
 ZERO = "0x0000000000000000000000000000000000000000"
@@ -31,6 +31,11 @@ class V3Venue:
         self.label = label
         self._deployments = deployments
         self.supports = tuple(sorted(deployments))
+
+    @property
+    def deployments(self) -> dict[str, "V3Deployment"]:
+        """Read-only view for code that builds its own registry (e.g. bot/networks)."""
+        return dict(self._deployments)
 
     def _deployment(self, chain: str) -> V3Deployment:
         try:
@@ -62,8 +67,7 @@ class V3Venue:
         deployment = self._deployment(chain)
         # The quoter takes the fee tier, not the pool address: the factory guarantees
         # exactly one pool per (pair, fee), so the pair plus fee is unambiguous.
-        calldata = "0x" + QUOTE_V3_SELECTOR + "".join(
-            word(a) for a in (token_in, token_out, amount_in, pool.fee, 0))
+        calldata = encode_v3_quote(token_in, token_out, amount_in, pool.fee)
         raw = rpc.eth_call(deployment.quoter, calldata, block)
         return result_uint(raw, 0)
 

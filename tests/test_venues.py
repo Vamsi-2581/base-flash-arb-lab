@@ -122,6 +122,21 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(pancake_v3.supports, ("base",))
 
 
+class RegistryDriftTests(unittest.TestCase):
+    """The legacy pipeline keeps its own Exchange table; it must not drift."""
+
+    def test_bot_exchange_table_matches_the_venue_deployments(self):
+        from bot.networks import EXCHANGES
+        sources = {"UniswapV3": uniswap_v3, "PancakeV3": pancake_v3}
+        self.assertEqual(len(EXCHANGES), 2)
+        for exchange in EXCHANGES:
+            deployment = sources[exchange.label].deployments["base"]
+            with self.subTest(exchange=exchange.label):
+                self.assertEqual(exchange.factory, deployment.factory)
+                self.assertEqual(exchange.quoter, deployment.quoter)
+                self.assertEqual(exchange.fees, deployment.fees)
+
+
 class V3AdapterTests(unittest.TestCase):
     def test_discovery_skips_zero_addresses(self):
         rpc = FakeRpc([word(0), word(WETH), word(0), word(0)])

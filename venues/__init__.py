@@ -150,6 +150,12 @@ def encode_pool_id(pool_key: tuple[str, str, int, int, str]) -> bytes:
     return keccak256(bytes.fromhex(encoded))
 
 
+def encode_v3_quote(token_in: str, token_out: str, amount_in: int, fee: int) -> str:
+    """Calldata for the QuoterV2 entry point shared by every V3-shaped venue."""
+    return "0x" + QUOTE_V3_SELECTOR + "".join(
+        word(a) for a in (token_in, token_out, amount_in, fee, 0))
+
+
 def sort_pair(token_a: str, token_b: str) -> tuple[str, str]:
     """V4 orders currencies by address; every caller must agree on that order."""
     a, b = token_a.lower(), token_b.lower()

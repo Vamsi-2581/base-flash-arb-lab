@@ -33,10 +33,10 @@ negative before any of these gates were reached.
 | Hard contract stops | `src/FlashLiquidator.sol` | Pause true at deploy; owner-only, loan ≤5,000 USDC, minimum token profit 5 USDC, max `tx.gasprice` 5 gwei, deadline ≤45 seconds, premium ≤20 bps, allowlisted V3 fees |
 | Opt-in paper candidate builder | `research/live_shadow_candidates.py` | Emits local-only pinned-block USDC-debt/WETH-collateral candidates iff HF<1 and relevant Aave balances verified |
 | Actual current-block local simulation | `test/LiveShadowFork.t.sol` | Default test skips; only when gated candidate exists does Forge locally attempt Aave FlashLoan→liquidationCall→Uni swap→repayment; never broadcasts. A positive USDC return does not establish full L1/L2 after-Gas profitability |
-| Periodic readiness CI | `.github/workflows/shadow-live-readiness.yml` | Every 6 hours; bounded Borrow history + fresh pinned-state verification and candidate gate. May incur GitHub Actions minutes |
+| Periodic readiness CI | retired | The cron-driven readiness jobs were removed: they re-ran unit tests that `ci.yml` already covers, and nothing was ever promoted from them. The manual readiness path below is unchanged. |
 | Opt-in local daemon | `python -m scripts.run_shadow_monitor` | One pass by default; for explicit long run use `--iterations 0 --interval 300`; outputs JSONL local evidence, no wallet, never broadcasts |
 
-Relevant CI: [Shadow-live readiness](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/shadow-live-readiness.yml), [Historical Fork regression](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/verified-liquidation-regression.yml), [all tests](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/ci.yml).
+Relevant CI: [unit and Foundry tests](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/ci.yml), [historical backtest](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/historical-backtest.yml), [read-only mainnet smoke](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/live-validation.yml).
 
 ### First real mainnet shadow observation
 

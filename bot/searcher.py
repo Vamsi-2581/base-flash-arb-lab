@@ -15,7 +15,8 @@ from pathlib import Path
 import sys
 import time
 
-from .abi import QUOTER_SIGNATURE, encode, result_address, result_uint
+from .abi import encode, result_address, result_uint
+from venues import encode_v3_quote
 from .networks import BASE_CHAIN_ID, USDC, WETH, AAVE_PROVIDER, EXCHANGES, Exchange
 from .rpc import RPC, RpcError
 
@@ -83,7 +84,7 @@ def pool_at(rpc: RPC, venue: Exchange, fee: int, block_hex: str) -> Venue | None
 def quoter_at(rpc: RPC, quoter: str, token_in: str, token_out: str,
               amount_in: int, fee: int, block_hex: str) -> int:
     raw = rpc.eth_call(quoter,
-        encode(QUOTER_SIGNATURE, token_in, token_out, amount_in, fee, 0), block_hex)
+        encode_v3_quote(token_in, token_out, amount_in, fee), block_hex)
     result = result_uint(raw)
     if result <= 0:
         raise RpcError("Zero quoted output")
@@ -168,7 +169,7 @@ def discover(rpc: RPC, *, amounts_usdc: list[int], slip_bps: int = 30,
                 unique[k] = (v, token_in, token_out, amount)
         if not unique:
             return
-        requests = [(v.quoter, encode(QUOTER_SIGNATURE, tin, tout, n, v.fee, 0), block_hex)
+        requests = [(v.quoter, encode_v3_quote(tin, tout, n, v.fee), block_hex)
                     for v, tin, tout, n in unique.values()]
         try:
             if not hasattr(rpc, "batch_eth_call"):

@@ -111,6 +111,32 @@ Three things the design guarantees:
 **Deliberately not included:** MEV builder integration, sequencer co-location, V4 hooks,
 multihop graphs, an audit, a deployment, or any claim that a quote is executable.
 
+## Two paths, one quoting layer
+
+`venues/` + `arbcheck` is the supported entry point: add a venue there, and both the CLI
+and any future tool see it.
+
+The `bot/` pipeline (search → fork replay → preflight → optional live send) is kept
+because the replay and execution paths depend on it. It no longer keeps a second copy of
+anything that matters: its calldata comes from `venues.encode_v3_quote` and its venue
+addresses from the `venues` deployments, and a test fails if the two registries drift.
+
+What that means in practice:
+
+| You want to… | Use |
+|---|---|
+| Check whether a route pays | `arbcheck quote` / `sweep` |
+| Add a DEX | `venues/`, see [ADD_A_VENUE.md](ADD_A_VENUE.md) |
+| Replay a candidate on a fork | `script/ForkProof.s.sol` via `arbcheck replay` |
+| Run the legacy scanner | `python -m bot.searcher` (unchanged output) |
+
+Continuous integration is deliberately small — four workflows: tests
+([`ci.yml`](.github/workflows/ci.yml)), the historical measurement
+([`historical-backtest.yml`](.github/workflows/historical-backtest.yml)), a read-only
+mainnet smoke test ([`live-validation.yml`](.github/workflows/live-validation.yml)) and
+the UniswapX validator ([`uniswapx-sdk-validation.yml`](.github/workflows/uniswapx-sdk-validation.yml)).
+The ten research jobs that used to re-run the same unit tests on a schedule are gone.
+
 ## Documentation
 
 | Document | What it answers |

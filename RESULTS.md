@@ -264,7 +264,7 @@ forge test --match-contract LiquidationForkProofTest \
 cat validation/liquidation-fork/fork-profit-proof.json
 ```
 
-Dedicated independent-replay workflow: [verified-liquidation-regression.yml](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/verified-liquidation-regression.yml).
+The independent replay ran as a dedicated CI workflow, since retired when the workflow count was cut; the proof itself is reproducible locally with the command above.
 
 ### Essential limitations / roadmap before risking the $100 budget
 

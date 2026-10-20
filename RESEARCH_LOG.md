@@ -45,7 +45,7 @@ The experimental workflows sometimes encounter public-provider failures. A green
 
 ### Run and inspect
 
-GitHub Actions → [P0 liquidation + UniswapX read-only research](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/p0-opportunities.yml), or locally:
+GitHub Actions ran this as a scheduled read-only job (retired), or locally:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -244,7 +244,7 @@ Private research on **Base mainnet 8453** using only public historical JSON-RPC 
 - Spot economic screen: best observed USDC/WETH price spread, two V3 swap fees, Aave loan premium and estimated USDC Gas; outputs exact break-even hurdle and excess/missing basis points. These are *infinitesimal spot* signals ignoring depth impact and changes to non-price pool storage.
 - `scripts/triangle_backtest.py`: same historical-block pinned Uniswap/Pancake V3 QuoterV2 chaining for USDC→A→B→USDC. Starts with WETH/cbETH and DAI/USDbC token pairs; checks exact DEX outputs at each step and then deducts Aave premium and a larger three-hop modeled Gas allowance. There is **no three-hop smart-contract execution adapter yet**. No amount of quote profitability counts as verified profit.
 - New offline tests for Q64.96 math, atomically grouped transaction logs, fee-aware breakeven, and three-hop quote chaining.
-- GitHub Actions: [event-level diagnostics](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/event-microstructure.yml) and [three-hop historical quotes](https://github.com/starky2000/base-flash-arb-lab/actions/workflows/triangle-research.yml), with artifacts preserving real evidence and no live transactions.
+- GitHub Actions ran event-level diagnostics and three-hop historical quotes as separate workflows, since retired. Their artifacts preserved real evidence and no live transactions.
 
 ### Initial observed event-level results
 
